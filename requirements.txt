@@ -1,4 +1,0 @@
-openai >= 0.27.0
-anytree
-httpx
-google-genai
