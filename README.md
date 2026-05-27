@@ -1,19 +1,48 @@
-**English | [中文](./README.ZH_CN.md)**  
+**English | [中文](./README.ZH_CN.md)**
 
-# WPeChatGPT
-- **IDA plugin** based on the same model as ChatGPT, using the gpt-3.5-turbo model released by OpenAI, can help analysts quickly analyze binary files.
+> [!NOTE]
+> WPeChatGPT has been renamed to **WPeGPT** starting from v3.0 with a complete architectural redesign. Existing installations are unaffected.
 
-- **Features** currently supported by *WPeChatGPT* include:
-    - Analyze the usage environment, intended purpose, and function of the function.
-    - Rename variables of functions.
-    - Attempt to restore the function with python3, this function is mainly for functions of smaller blocks (such as an XOR decryption function).
-    - Look for vulnerabilities in the current function.
-    - Try to use python to generate the corresponding EXP for the vulnerable function.
-    - Utilize GPT **Automatically analyze binary files**, see section ***Auto-WPeGPT*** for details.
-- The *WPeChatGPT* plugin uses OpenAI's **text-davinci-003** model trained on GPT.
-   After *v2.0* use OpenAI's latest **gpt-3.5-turbo** model (The same as **ChatGPT**).
+# WPeGPT
 
-ChatGPT's analysis results **for reference only**, otherwise we analysts would be out of work on the spot. XD
+An **IDA plugin** that integrates AI (LLM) models into binary analysis workflows. WPeGPT sends decompiled pseudocode from IDA to an AI model and writes analysis results back as IDA comments. Supports multiple AI providers (OpenAI, DeepSeek, and any OpenAI-compatible API).
+
+Inspired by [Gepetto](https://github.com/JusticeRage/Gepetto).
+
+> AI's analysis results are **for reference only** — otherwise we analysts would be out of work on the spot. XD
+
+## Features
+
+### Interactive Analysis (IDA Plugin)
+
+| Feature | Description |
+|---------|-------------|
+| Function Analysis | Analyze purpose, usage environment, and behavior of a function |
+| Variable Rename | AI-suggested renaming of function variables |
+| Python Restore | Reconstruct small functions (e.g., XOR decryption) in Python |
+| Vulnerability Finding | Identify potential vulnerabilities in the current function |
+| Exploit Generation | Attempt to generate a PoC exploit for vulnerable functions |
+
+### Automated Analysis (WPeServer + Controller)
+
+v3.0 introduces a **TCP-based architecture** for fully automated, headless binary analysis:
+
+- **WPeServer** — An embedded TCP server inside IDA that accepts commands from an external controller. Supports multiple concurrent IDA instances.
+- **Three-Phase Analysis Pipeline** — Targeted segmented intelligent analysis.
+- **Three Analysis Modes:**
+
+  | Mode | Description | Time |
+  |------|-------------|------|
+  | `light` | Global Scan + Critical Path Function Analysis | ~2-5 min |
+  | `full` | Global Scan + Critical Path + Full Function Analysis | ~10-30 min |
+  | `vuln` | Critical Path Function Vulnerability Analysis | ~5-20 min |
+
+- **Intelligent String Classification** — Automatically categorizes strings into 10 categories: networking, keylogging, crypto, injection, persistence, antianalysis, dropper, code execution, memory/file ops, installer framework.
+- **Network IoC Extraction** — Extracts IPs, domains, URLs, and ports. Auto-detects and attempts to decrypt encrypted C2 addresses.
+- **Function Suspiciousness Scoring** — Ranks functions by keyword matching, caller/callee relationships, size, and stdlib filtering to prioritize AI analysis.
+- **Shellcode Loader Detection** — Pattern-based detection of shellcode execution techniques.
+- **Structured Reports** — Outputs both JSON and Markdown reports to `<binary_name>_WPeAI_Results/`.
+
 ## Update History
 |Version|Date|Comment|
 |----|----|----|
@@ -26,91 +55,85 @@ ChatGPT's analysis results **for reference only**, otherwise we analysts would b
 |2.4|2023-11-10|1. Changed some display details.<br>2. Update **Auto-WPeGPT v0.2**.|
 |2.5|2024-08-07|1. Add support for other models, you can set this using the *MODEL* variable. @tpsnt<br>2. Support for the new version of the python openai package. (Need to update your openai package)|
 |2.6|2025-02-17|Add support for DeepSeek, you need to set the variable *PLUGIN_NAME* to WPeChat-DeepSeek and fill the API KEY into variable *model_api_key*.<br>(The default model is DeepSeek-V3. If you want to use the R1 model, modify variable **MODEL** = *'deepseek-reasoner'*.)|
+| **3.0** | **2026-05-27** | **Renamed to WPeGPT. Complete architectural redesign:**<br>1. Split into modular architecture (`WPeGPT.py` + `config.py` + `wpe_ai_controller.py`).<br>2. Introduced **WPeServer** (TCP command server) for external AI-driven automation.<br>3. **Three-phase analysis pipeline** (global scan → critical path → full scan).<br>4. **Three analysis modes** (light / full / vuln).<br>5. Intelligent string classification (10 categories) and network IoC extraction.<br>6. Function suspiciousness scoring system with stdlib filtering.<br>7. Shellcode loader detection.<br>8. Structured JSON + Markdown report generation. |
+
 ## Install
-1. Run the following command to install the required packages.
-```
+
+### 1. Install Dependencies
+
+```bash
 pip install -r ./requirements.txt
 ```
-2. Modify the script `WPeChatGPT.py`, add your API key to the variable ***openai.api_key***, change the variable ***ZH_CN*** to False. (Default Chinese)
-3. Copy the script file `WPeChatGPT.py` and the folder `Auto-WPeGPT_WPeace` to the plugins folder of IDA, and finally restart IDA to use it.
 
-**`! NOTE`**: You need to set the **IDA environment** to **python3**, and you need to use the **latest OpenAI Python package** after WPeChatGPT *2.0* version.
+### 2. Configure
+
+Edit `WPeGPT_Config/config.py`:
+
+- Set your `API_KEY`
+- Set `API_BASE_URL`
+- Set `MODEL`
+- Set `ZH_CN = True` for Chinese (default), `False` for English
+- Optionally configure `ANALYSIS_MODE`, `MAX_WORKERS`, and other options
+
+### 3. Install Plugin
+
+Copy `WPeGPT.py` and the `WPeGPT_Config/` folder to your IDA `plugins/` directory, then restart IDA.
+
+> **NOTE**: IDA must be configured to use **Python 3**.
+
 ## Usage
-Supports using any of the **right click, menu bar or shortcut keys** in IDA.
-- hot key:  
-  `Function analysis = "Ctrl-Alt-G"`  
-  `Rename function variables = "Ctrl-Alt-R"`  
-  `Vulnerability finding = "Ctrl-Alt-E"`  
 
-- Right click on the pseudocode window:
+### Interactive Mode (IDA Plugin)
 
-&emsp;&emsp;<img src="https://github.com/WPeace-HcH/WPeChatGPT/blob/main/IMG/menuInPseudocode.png" width="788"/>
+- **Keyboard Shortcuts:**
 
-- Menu bar: Edit $\Rightarrow$ WPeChatGPT
+  | Shortcut | Action |
+  |----------|--------|
+  | `Ctrl+Alt+G` | Function analysis |
+  | `Ctrl+Alt+R` | Rename function variables |
+  | `Ctrl+Alt+E` | Vulnerability finding |
+  | `Ctrl+Alt+W` | Light auto analysis |
 
-&emsp;&emsp;<img src="https://github.com/WPeace-HcH/WPeChatGPT/blob/main/IMG/menuInEdit.png" width="360"/>
+- **Right-click** in the pseudocode window for context menu.
+
+&emsp;&emsp;<img src="https://github.com/WPeace-HcH/WPeGPT/blob/main/IMG/menuInPseudocode.png" width="788"/>
+
+- **Menu bar**: Edit → WPeGPT
+
+&emsp;&emsp;<img src="https://github.com/WPeace-HcH/WPeGPT/blob/main/IMG/menuInEdit.png" width="360"/>
+
+### Automated Mode (Headless Analysis)
+
+Use the [wpegpt-analyzer](https://github.com/WPeace-HcH/wpegpt-analyzer) Skill, or run Menu bar: Edit → WPeGPT → Auto-WPeGPT
+
+Reports are saved to `<binary_name>_WPeAI_Results/`.
 
 ## Example
+
 How to use:
 
-&emsp;&emsp;<img src="https://github.com/WPeace-HcH/WPeChatGPT/blob/main/IMG/useExample.gif" width="790"/>
+&emsp;&emsp;<img src="https://github.com/WPeace-HcH/WPeGPT/blob/main/IMG/useExample.gif" width="790"/>
 
-Function analysis effect display:
+Function analysis results:
 
-&emsp;&emsp;<img src="https://github.com/WPeace-HcH/WPeChatGPT/blob/main/IMG/resultExample.gif" width="790"/>
+&emsp;&emsp;<img src="https://github.com/WPeace-HcH/WPeGPT/blob/main/IMG/resultExample.gif" width="790"/>
 
-Vulnerability finding effect display:
+Vulnerability finding:
 
-&emsp;&emsp;<img src="https://github.com/WPeace-HcH/WPeChatGPT/blob/main/IMG/vulnExample.gif" width="790"/>
+&emsp;&emsp;<img src="https://github.com/WPeace-HcH/WPeGPT/blob/main/IMG/vulnExample.gif" width="790"/>
 
-## Auto-WPeGPT
-**Update History:**
-|Version|Date|Comment|
-|----|----|----|
-|0.1|2023-04-23|Initial release.|
-|0.2|2023-11-10|1. Improve the recognition of valid strings.<br>2. Improve the analysis of function call trees.<br>3. Add recognition for import functions.|
+## About OpenAI-API Errors
 
-**How to use:** Find Auto-WPeGPT in the menu bar and click it. After the output is complete, you can find the analysis results in the corresponding folder (*"WPe_+IDB name"*).
-- Menu bar: Edit $\Rightarrow$ WPeChatGPT $\Rightarrow$ Auto-WPeGPT
+If you experience connection issues while behind a proxy:
 
-&emsp;&emsp;<img src="https://github.com/WPeace-HcH/WPeChatGPT/blob/main/IMG/auto-wpegpt_menu.png" width="788"/>
+- Check your `urllib3` version — v1.26 has known proxy issues. Fix with:
+  ```bash
+  pip uninstall urllib3
+  pip install urllib3==1.25.11
+  ```
+- Configure `FORWARD_PROXY` in `config.py` (e.g., `http://127.0.0.1:7890`).
+- Or use a reverse proxy by setting `API_BASE_URL`.
 
-The meaning of each file in the output folder:
-```
-GPT-Result.txt -> Auto-WPeGPT analysis results
-funcTree.txt -> function call tree structure
-mainFuncTree.txt -> main function tree structure
-effectiveStrings.txt -> Suspicious strings in the binary
-```
+## Contact
 
-**Show results:** 
-
-&emsp;&emsp;<img src="https://github.com/WPeace-HcH/WPeChatGPT/blob/main/IMG/autogptExample.gif" width="788"/>
-
-After testing, the v0.1 version has a better analysis effect on files with fewer functions. In case of binary files with a large number of functions, tokens will exceed the range. We will try to improve it in the next version.
-
-## About OpenAI-API error reporting
-&emsp;&emsp;From March 2, 2023, I often encounter API errors, and I thought it was a problem of server instability (because I have ups and downs here), but because there are too many feedbacks that I have encountered related errors, so I I first went to OpenAI to check the API Status and found that it was running well, so I found that it might not be the server problem I thought, so I searched and debugged related problems. The following is how I dealt with the OpenAI API connection problem:
-
-&emsp;&emsp;First of all, the plugin has been running under the conditions of **Scientific Online**.
-- Under the condition of scientific Internet access, if you find that the plug-in fails to connect to the API after many attempts, you need to check the urllib3 version of python (version 1.26 has a proxy problem).
-    - You can use the following commands to perform a fallback fix for urllib3:
-    ```
-    pip uninstall urllib3
-    pip install urllib3==1.25.11
-    ```
-- You can set forward or reverse proxies for the plugin:
-    - Fill in the proxy address and port information into the ***proxy*** variable (forward-proxy):
-    ```
-    # Set your forward-proxy if necessary. (e.g. Clash = http://127.0.0.1:7890)
-    proxy = ""
-    ```
-    - Fill in the reverse-proxy-url into the ***proxy_address*** variable (reverse-proxy):
-    ```
-    # Set reverse-proxy URL if you need. (e.g. Azure OpenAI)
-    proxy_address = ""
-    ```
-## Contact me
-If you encounter problems or have any questions when using the plugin, please leave a message or send me an email.
-## Acknowledgment
-The project is based on *Gepetto* and inspired by it, you can visit https://github.com/JusticeRage/Gepetto to learn about the original method.
+If you encounter issues or have questions, please open a GitHub Issue or send an email.
